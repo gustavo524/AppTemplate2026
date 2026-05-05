@@ -49,6 +49,47 @@ class HomeFragment : Fragment() {
     private lateinit var locationCallback: LocationCallback
     private lateinit var locationRequest: LocationRequest
 
+    private var lastLocation: Location? = null
+
+    private var totalDistance = 0f
+
+    private var tracking = false
+
+    private lateinit var txtPercurso: TextView
+
+    private lateinit var btnStart: Button
+
+    private lateinit var btnStop: Button
+
+    private lateinit var txtTempo: TextView
+
+    private var tempoInicial: Long = 0L
+
+    private var tempoFinal: Long = 0L
+
+    private val handlerTempo = android.os.Handler(Looper.getMainLooper())
+
+    private val runnableTempo = object : Runnable {
+        override fun run() {
+            if (tracking) {
+                val tempoAtual = System.currentTimeMillis()
+                val tempoDecorrido = tempoAtual - tempoInicial
+
+                val segundos = (tempoDecorrido / 1000) % 60
+                val minutos = (tempoDecorrido / (1000 * 60)) % 60
+                val horas = (tempoDecorrido / (1000 * 60 * 60))
+
+                txtTempo.text = String.format(
+                    "Tempo: %02d:%02d:%02d",
+                    horas, minutos, segundos
+                )
+
+                handlerTempo.postDelayed(this, 1000)
+            }
+        }
+    }
+
+
     companion object {
         private const val LOCATION_PERMISSION_REQUEST_CODE = 1
     }
@@ -64,14 +105,38 @@ class HomeFragment : Fragment() {
     ): View {
         val view = inflater.inflate(R.layout.fragment_home, container, false)
 
-
         inicializaGerenciamentoLocalizacao(view)
 
-        val container = view.findViewById<LinearLayout>(R.id.itemContainer)
-        carregarItensMarketplace(container)
+        val containerItens = view.findViewById<LinearLayout>(R.id.itemContainer)
+        carregarItensMarketplace(containerItens)
+
+        // 🔥 NOVO (distância percorrida)
+        txtPercurso = view.findViewById(R.id.txtPercurso)
+        txtTempo = view.findViewById(R.id.txtTempo)
+        btnStart = view.findViewById(R.id.btnStart)
+        btnStop = view.findViewById(R.id.btnStop)
+
+        btnStart.setOnClickListener {
+            tracking = true
+            totalDistance = 0f
+            lastLocation = null
+
+            tempoInicial = System.currentTimeMillis()
+
+            handlerTempo.removeCallbacks(runnableTempo) // evita bug
+            handlerTempo.post(runnableTempo)
+
+            txtPercurso.text = "Distância percorrida: 0 m"
+        }
+
+        btnStop.setOnClickListener {
+            tracking = false
+            tempoFinal = System.currentTimeMillis()
+        }
 
         return view
     }
+
 
 
     override fun onDestroyView() {
@@ -142,15 +207,26 @@ class HomeFragment : Fragment() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 locationResult.lastLocation?.let { location ->
+
                     displayAddress(location)
+
+                    // 🚶 NOVO: cálculo da distância
+                    if (tracking && lastLocation != null) {
+                        val distance = lastLocation!!.distanceTo(location)
+                        totalDistance += distance
+
+                        txtPercurso.text = "Distância percorrida: ${totalDistance.toInt()} m"
+                    }
+
+                    lastLocation = location
                 }
             }
         }
 
         locationRequest = LocationRequest.create().apply {
-            interval = 30000 // Intervalo em milissegundos para atualizacoes de localizacao
+            interval = 1000 // Intervalo em milissegundos para atualizacoes de localizacao
             fastestInterval =
-                30000 // O menor intervalo de tempo para receber atualizacoes de localizacao
+                1000 // O menor intervalo de tempo para receber atualizacoes de localizacao
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         }
 
@@ -222,6 +298,8 @@ class HomeFragment : Fragment() {
                 }
             }
 
+
+
             override fun onCancelled(error: DatabaseError) {
                 Toast.makeText(
                     container.context,
@@ -232,3 +310,4 @@ class HomeFragment : Fragment() {
         })
     }
 }
+
